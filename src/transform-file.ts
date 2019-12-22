@@ -2,7 +2,7 @@ import * as Fs from "fs";
 import Ts from "typescript";
 import { IFs } from "memfs";
 import * as Path from "path";
-import resolveModule from "resolve";
+import resolve from "resolve";
 import {
   copy,
   mkdirp,
@@ -12,6 +12,11 @@ import {
 } from "./memfs";
 import { Volume } from "memfs";
 
+export { ModuleDescriptor };
+
+/**
+ * @alpha
+ */
 export interface File {
   /* Absolute path to file */
   path: string;
@@ -19,6 +24,9 @@ export interface File {
   contents: string;
 }
 
+/**
+ * @alpha
+ */
 export interface TransformFileOptions {
   /* Filesystem for tsc to work in. Defaults to an empty virtual filesystem. */
   fs?: IFs;
@@ -26,15 +34,10 @@ export interface TransformFileOptions {
   sources?: ReadonlyArray<File>;
   /* Mock modules to add to the project context. */
   mocks?: ReadonlyArray<ModuleDescriptor>;
+  /* Options to pass to tsc */
+  compilerOptions?: Partial<Ts.CompilerOptions>;
   /* TypeScript transform to apply to the compilation */
   transform: (program: Ts.Program) => Ts.TransformerFactory<Ts.SourceFile>;
-}
-
-declare module "resolve" {
-  export interface SyncOpts extends resolveModule.Opts {
-    /** function to synchronously test whether a directory exists */
-    isDirectory?: (directory: string) => boolean;
-  }
 }
 
 /**
@@ -64,8 +67,9 @@ declare module "resolve" {
  * })
  * ```
  *
- * @param file File to use as project root
- * @param options Options providing context to the transformation
+ * @alpha
+ * @param file - File to use as project root
+ * @param options - Options providing context to the transformation
  */
 export const transformFile = (
   file: File,
@@ -74,6 +78,35 @@ export const transformFile = (
   const fs = options.fs
     ? options.fs
     : ((Volume.fromJSON({}) as unknown) as IFs);
+
+  const readFileSync = (path: string) => fs.readFileSync(path);
+
+  const isFile = (name: string) => {
+    try {
+      return fs.statSync(name).isFile();
+    } catch (err) {
+      return false;
+    }
+  };
+
+  const isDirectory = (name: string) => {
+    try {
+      return fs.statSync(name).isDirectory();
+    } catch (err) {
+      return false;
+    }
+  };
+
+  const resolveFileName = (name: string, containingFile: string): string => {
+    return resolve.sync(name, {
+      basedir: Path.dirname(containingFile),
+      extensions: [".js", ".json", ".node", ".tsx", ".ts", ".d.ts"],
+      readFileSync,
+      isFile,
+      isDirectory
+    });
+  };
+
   createFile({ path: file.path, fs }, file.contents);
 
   (options.sources || []).forEach(source =>
@@ -92,7 +125,8 @@ export const transformFile = (
     skipLibCheck: true,
     target: Ts.ScriptTarget.ESNext,
     types: [],
-    noEmitOnError: true
+    noEmitOnError: true,
+    ...(options.compilerOptions || {})
   };
 
   const compilerHost = Ts.createCompilerHost(config, true);
@@ -107,29 +141,9 @@ export const transformFile = (
   compilerHost.fileExists = file => fs.existsSync(file);
 
   compilerHost.resolveModuleNames = (names, containingFile) => {
-    return names.map(name => {
-      return {
-        resolvedFileName: resolveModule.sync(name, {
-          basedir: Path.dirname(containingFile),
-          extensions: [".js", ".json", ".node", ".tsx", ".ts", ".d.ts"],
-          readFileSync: path => fs.readFileSync(path),
-          isFile: (name: string) => {
-            try {
-              return fs.statSync(name).isFile();
-            } catch (err) {
-              return false;
-            }
-          },
-          isDirectory: (name: string) => {
-            try {
-              return fs.statSync(name).isDirectory();
-            } catch (err) {
-              return false;
-            }
-          }
-        })
-      };
-    });
+    return names.map(name => ({
+      resolvedFileName: resolveFileName(name, containingFile)
+    }));
   };
 
   compilerHost.getSourceFile = (filename, version) => {
@@ -147,7 +161,7 @@ export const transformFile = (
 
   const program = Ts.createProgram([file.path], config, compilerHost);
 
-  const { emitSkipped, diagnostics, emittedFiles } = program.emit(
+  const { emitSkipped, diagnostics } = program.emit(
     program.getSourceFile(file.path),
     undefined,
     undefined,
@@ -157,11 +171,41 @@ export const transformFile = (
     }
   );
 
-  if (emitSkipped || typeof emittedFiles === 'undefined') {
+  if (emitSkipped) {
     throw new Error(
       diagnostics.map(diagnostic => diagnostic.messageText).join("\n")
     );
   }
 
-  return String(fs.readFileSync(emittedFiles[0]!));
+  const inFile = program.getSourceFile(file.path);
+
+  if (!inFile) {
+    throw new Error(`Could not get SourceFile for ${file.path}`);
+  }
+
+  if (!inFile) {
+    throw new Error(`Could not determine ArtifactFile for ${file.path}`);
+  }
+
+  const fileArtifactPath = getFileArtifactPath(inFile, program);
+
+  if (!fileArtifactPath) {
+    throw new Error(`Could not determine fileArtifactPath for ${file.path}`);
+  }
+
+  return String(fs.readFileSync(fileArtifactPath));
 };
+
+function getFileArtifactPath(
+  file: Ts.SourceFile,
+  program: Ts.Program
+): string | undefined {
+  const options = program.getCompilerOptions();
+  const extname = Path.extname(file.fileName);
+  const basename = Path.basename(file.fileName, extname);
+
+  const artifactExtname =
+    extname === ".tsx" && options.jsx === Ts.JsxEmit.Preserve ? ".jsx" : ".js";
+
+  return Path.join(options.outDir || ".", `${basename}${artifactExtname}`);
+}

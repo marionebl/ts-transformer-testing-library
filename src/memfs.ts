@@ -9,10 +9,12 @@ export interface FsOrigin {
   path: string;
 }
 
+/**
+ * @alpha
+ */
 export interface ModuleDescriptor {
   name: string;
-  implementation: string;
-  declaration: string;
+  content: string;
 }
 
 export function mkdirp(at: FsOrigin): void {
@@ -43,13 +45,8 @@ export function createModule(mod: ModuleDescriptor, fs: FsLike): void {
   mkdirp({ path: `/node_modules/${mod.name}`, fs });
 
   const base = `/node_modules/${mod.name}`;
-  const implementation = typeof mod.implementation === 'string' ? mod.implementation : 'module.exports = {};';
-  const declaration = typeof mod.declaration === 'string' ? mod.declaration : `declare module "${mod.name}" {}`; 
-
-
-  createFile({ path: `${base}/index.js`, fs }, implementation);
-  createFile({ path: `${base}/index.d.ts`, fs }, declaration);
-  createFile({ path: `${base}/package.json`, fs }, JSON.stringify({ name: mod.name, main: './src/index.tsx' }));
+  createFile({ path: `${base}/index.ts`, fs }, mod.content);
+  createFile({ path: `${base}/package.json`, fs }, JSON.stringify({ name: mod.name, main: './src/index.ts' }));
 }
 
 export function list(dir: string, fs: FsLike, basedir?: string): string[] {
@@ -58,8 +55,7 @@ export function list(dir: string, fs: FsLike, basedir?: string): string[] {
   return (fs
     .readdirSync(dir, {  encoding: 'buffer' }) as string[])
     .map((subPath: string) => {
-      console.log({subPath});
-      const p = Path.resolve(dir, subPath);
+      const p = Path.resolve(dir, String(subPath));
       const stat = fs.statSync(p);
 
       if (stat.isDirectory()) {
