@@ -1,12 +1,16 @@
 {
   "name": "ts-transformer-testing-library",
-  "version": "1.0.0-alpha.1",
+  "version": "1.0.0-alpha.2",
   "description": "Make testing custom TypeScript transformers a breeze",
   "main": "./lib/ts-transform-testing-library.js",
   "typings": "./lib/ts-transform-testing-library.d.ts",
   "repository": "git@github.com:marionebl/ts-transformer-testing-library.git",
   "author": "Mario Nebl <hello@mario-nebl.de>",
   "license": "MIT",
+  "files": [
+    "lib",
+    "src"
+  ],
   "devDependencies": {
     "@types/jest": "^24.0.24",
     "@types/node": "^12.12.21",
