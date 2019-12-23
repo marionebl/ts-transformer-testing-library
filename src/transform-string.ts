@@ -1,14 +1,5 @@
 import Ts from "typescript";
-
-/**
- * @alpha
- */
-export interface TransformStringOptions {
-  /* TypeScript transform to apply to the compilation */
-  transform: (args?: any) => Ts.TransformerFactory<Ts.SourceFile>;
-  /* Options to pass to tsc */
-  compilerOptions?: Partial<Ts.CompilerOptions>;
-}
+import { transformFile, TransformFileOptions } from "./transform-file";
 
 /**
  * Transform a standalone TypeScript source string.
@@ -28,28 +19,10 @@ export interface TransformStringOptions {
  */
 export const transformString = (
   source: string,
-  options: TransformStringOptions
+  options: TransformFileOptions
 ): string => {
-  const program = Ts.createProgram({
-    rootNames: ["index.ts"],
-    options: {
-      module: Ts.ModuleKind.ESNext,
-      moduleResolution: Ts.ModuleResolutionKind.NodeJs,
-      ...(options.compilerOptions ? options.compilerOptions : {})
-    }
-  });
-
-  const transformer = options.transform(program);
-
-  const sourceFile = Ts.createSourceFile(
-    "index.ts",
-    source,
-    Ts.ScriptTarget.Latest,
-    true
-  );
-
-  const actual = Ts.transform(sourceFile, [transformer]).transformed[0];
-  return Ts.createPrinter()
-    .printFile(actual)
-    .toString();
+  return transformFile({
+    path: "/index.ts",
+    contents: source
+  }, options);
 };

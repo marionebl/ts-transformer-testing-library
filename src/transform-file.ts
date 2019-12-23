@@ -37,7 +37,7 @@ export interface TransformFileOptions {
   /* Options to pass to tsc */
   compilerOptions?: Partial<Ts.CompilerOptions>;
   /* TypeScript transform to apply to the compilation */
-  transform: (program: Ts.Program) => Ts.TransformerFactory<Ts.SourceFile>;
+  transforms: ((program: Ts.Program) => Ts.TransformerFactory<Ts.SourceFile>)[];
 }
 
 /**
@@ -167,7 +167,7 @@ export const transformFile = (
     undefined,
     false,
     {
-      before: [options.transform(program)]
+      before: options.transforms.map(t => t(program))
     }
   );
 
