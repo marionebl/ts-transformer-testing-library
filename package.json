@@ -1,6 +1,6 @@
 {
   "name": "ts-transformer-testing-library",
-  "version": "1.0.0-alpha.4",
+  "version": "1.0.0-alpha.5",
   "description": "Make testing custom TypeScript transformers a breeze",
   "main": "./lib/ts-transform-testing-library.js",
   "typings": "./lib/ts-transform-testing-library.d.ts",
