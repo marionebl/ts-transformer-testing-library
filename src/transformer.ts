@@ -7,6 +7,7 @@ export type TransformerFn = (
 
 export class Transformer {
   private compilerOptions: Ts.CompilerOptions = {};
+  private filePath?: string;
   private file?: File;
   private mocks: ModuleDescriptor[] = [];
   private sources: File[] = [];
@@ -27,6 +28,11 @@ export class Transformer {
     return this;
   }
 
+  public addTransformers(transformers: TransformerFn[]): this {
+    this.transformers.push(...transformers);
+    return this;
+  }
+
   public setCompilerOptions(options: Ts.CompilerOptions): this {
     this.compilerOptions = options;
     return this;
@@ -37,10 +43,18 @@ export class Transformer {
     return this;
   }
 
+  public setFilePath(filePath: string): this {
+    this.filePath = filePath;
+    return this;
+  }
 
   public transform(input?: string) {
+    const filePath = typeof this.filePath === "string"
+      ? this.filePath
+      : "/index.ts";
+
     const file = typeof input === "string"
-      ? { path: "/index.ts", contents: input }
+      ? { path: filePath, contents: input }
       : this.file;
 
     if (!file) {
