@@ -1,5 +1,6 @@
 import Ts from "typescript";
-import { ModuleDescriptor, File, transformFile } from "./transform-file";
+import { ModuleDescriptor, File, transformFile, getCompilerOptions } from "./transform-file";
+import { Project } from "@ts-morph/bootstrap";
 
 export type TransformerFn = (
   program: Ts.Program
@@ -12,43 +13,66 @@ export class Transformer {
   private mocks: ModuleDescriptor[] = [];
   private sources: File[] = [];
   private transformers: TransformerFn[] = [];
+  private project?: Project;
 
-  public addMock(moduleDescriptor: ModuleDescriptor): this {
-    this.mocks.push(moduleDescriptor);
-    return this;
+  private clone() {
+    const target = new Transformer();
+
+    for (const prop in this) {
+      if (this.hasOwnProperty(prop)) {
+        (target as any)[prop] = this[prop];
+      }
+    }
+
+    return target;
   }
 
-  public addSource(source: File): this {
+  public addMock(moduleDescriptor: ModuleDescriptor): Transformer {
+    this.mocks.push(moduleDescriptor);
+    return this.clone();
+  }
+
+  public addSource(source: File): Transformer {
     this.sources.push(source);
     return this;
   }
 
-  public addTransformer(transformer: TransformerFn): this {
+  public addTransformer(transformer: TransformerFn): Transformer {
     this.transformers.push(transformer);
     return this;
   }
 
-  public addTransformers(transformers: TransformerFn[]): this {
+  public addTransformers(transformers: TransformerFn[]): Transformer {
     this.transformers.push(...transformers);
     return this;
   }
 
-  public setCompilerOptions(options: Ts.CompilerOptions): this {
+  public setCompilerOptions(options: Ts.CompilerOptions): Transformer {
     this.compilerOptions = options;
+
+    if (this.project) {
+      this.project.compilerOptions.set(options);
+    }
+
     return this;
   }
 
-  public setFile(file: File): this {
+  public setFile(file: File): Transformer {
     this.file = file;
     return this;
   }
 
-  public setFilePath(filePath: string): this {
+  public setFilePath(filePath: string): Transformer {
     this.filePath = filePath;
     return this;
   }
 
-  public transform(input?: string) {
+  public transform(input?: string): string {
+    this.project = this.project || new Project({
+      useInMemoryFileSystem: true,
+      compilerOptions: getCompilerOptions(this.compilerOptions)
+    });
+
     const filePath = typeof this.filePath === "string"
       ? this.filePath
       : "/index.ts";
@@ -62,6 +86,7 @@ export class Transformer {
     }
 
     return transformFile(file, {
+      project: this.project,
       compilerOptions: this.compilerOptions,
       mocks: this.mocks,
       sources: this.sources,

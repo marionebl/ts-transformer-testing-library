@@ -24,6 +24,8 @@ export interface File {
  * @alpha
  */
 export interface TransformFileOptions {
+  /* A ts-morph project to use and reuse */
+  project?: Project;
   /* Sources to add to virtual filesystem. */
   sources?: ReadonlyArray<File>;
   /* Mock modules to add to the project context. */
@@ -69,22 +71,9 @@ export const transformFile = (
   file: File,
   options: TransformFileOptions
 ): string => {
-  const project = new Project({
+  const project = options.project || new Project({
     useInMemoryFileSystem: true,
-    compilerOptions: {
-      outDir: "/dist",
-      lib: ["/node_modules/typescript/lib/lib.esnext.full.d.ts"],
-      module: Ts.ModuleKind.ESNext,
-      moduleResolution: Ts.ModuleResolutionKind.NodeJs,
-      suppressImplicitAnyIndexErrors: true,
-      resolveJsonModule: true,
-      skipLibCheck: true,
-      target: Ts.ScriptTarget.ESNext,
-      types: [],
-      noEmitOnError: true,
-      jsx: Ts.JsxEmit.Preserve,
-      ...(options.compilerOptions || {})
-    }
+    compilerOptions: getCompilerOptions(options.compilerOptions)
   });
 
   project.createSourceFile(file.path, file.contents);
@@ -136,6 +125,23 @@ export const transformFile = (
 
   return String(project.fileSystem.readFileSync(fileArtifactPath));
 };
+
+export function getCompilerOptions(options?: Partial<Ts.CompilerOptions>): Ts.CompilerOptions {
+  return {
+    outDir: "/dist",
+    lib: ["/node_modules/typescript/lib/lib.esnext.full.d.ts"],
+    module: Ts.ModuleKind.ESNext,
+    moduleResolution: Ts.ModuleResolutionKind.NodeJs,
+    suppressImplicitAnyIndexErrors: true,
+    resolveJsonModule: true,
+    skipLibCheck: true,
+    target: Ts.ScriptTarget.ESNext,
+    types: [],
+    noEmitOnError: true,
+    jsx: Ts.JsxEmit.Preserve,
+    ...(options || {})
+  }
+}
 
 function getFileArtifactPath(
   file: Ts.SourceFile,
