@@ -1,18 +1,14 @@
-import * as Fs from "fs";
 import Ts from "typescript";
-import { IFs } from "memfs";
 import * as Path from "path";
-import resolve from "resolve";
-import {
-  copy,
-  mkdirp,
-  createFile,
-  ModuleDescriptor,
-  createModule
-} from "./memfs";
-import { Volume } from "memfs";
+import { Project } from "@ts-morph/bootstrap";
 
-export { ModuleDescriptor };
+/**
+ * @alpha
+ */
+export interface ModuleDescriptor {
+  name: string;
+  content: string;
+}
 
 /**
  * @alpha
@@ -28,8 +24,6 @@ export interface File {
  * @alpha
  */
 export interface TransformFileOptions {
-  /* Filesystem for tsc to work in. Defaults to an empty virtual filesystem. */
-  fs?: IFs;
   /* Sources to add to virtual filesystem. */
   sources?: ReadonlyArray<File>;
   /* Mock modules to add to the project context. */
@@ -75,91 +69,40 @@ export const transformFile = (
   file: File,
   options: TransformFileOptions
 ): string => {
-  const fs = options.fs
-    ? options.fs
-    : ((Volume.fromJSON({}) as unknown) as IFs);
-
-  const readFileSync = (path: string) => fs.readFileSync(path);
-
-  const isFile = (name: string) => {
-    try {
-      return fs.statSync(name).isFile();
-    } catch (err) {
-      return false;
+  const project = new Project({
+    useInMemoryFileSystem: true,
+    compilerOptions: {
+      outDir: "/dist",
+      lib: ["/node_modules/typescript/lib/lib.esnext.full.d.ts"],
+      module: Ts.ModuleKind.ESNext,
+      moduleResolution: Ts.ModuleResolutionKind.NodeJs,
+      suppressImplicitAnyIndexErrors: true,
+      resolveJsonModule: true,
+      skipLibCheck: true,
+      target: Ts.ScriptTarget.ESNext,
+      types: [],
+      noEmitOnError: true,
+      jsx: Ts.JsxEmit.Preserve,
+      ...(options.compilerOptions || {})
     }
-  };
+  });
 
-  const isDirectory = (name: string) => {
-    try {
-      return fs.statSync(name).isDirectory();
-    } catch (err) {
-      return false;
-    }
-  };
-
-  const resolveFileName = (name: string, containingFile: string): string => {
-    return resolve.sync(name, {
-      basedir: Path.dirname(containingFile),
-      extensions: [".js", ".json", ".node", ".tsx", ".ts", ".d.ts"],
-      readFileSync,
-      isFile,
-      isDirectory
-    });
-  };
-
-  createFile({ path: file.path, fs }, file.contents);
+  project.createSourceFile(file.path, file.contents);
 
   (options.sources || []).forEach(source =>
-    createFile({ path: source.path, fs }, source.contents)
-  );
-  (options.mocks || []).forEach(mock => createModule(mock, fs));
-
-  const config: Ts.CompilerOptions = {
-    jsx: Ts.JsxEmit.Preserve,
-    outDir: "/dist",
-    lib: ["/node_modules/typescript/lib/lib.esnext.full.d.ts"],
-    module: Ts.ModuleKind.ESNext,
-    moduleResolution: Ts.ModuleResolutionKind.NodeJs,
-    suppressImplicitAnyIndexErrors: true,
-    resolveJsonModule: true,
-    skipLibCheck: true,
-    target: Ts.ScriptTarget.ESNext,
-    types: [],
-    noEmitOnError: true,
-    ...(options.compilerOptions || {})
-  };
-
-  const compilerHost = Ts.createCompilerHost(config, true);
-
-  copy(
-    { fs: Fs, path: compilerHost.getDefaultLibLocation!() },
-    { fs, path: "/node_modules/typescript/lib/" }
+    project.createSourceFile(source.path, source.contents)
   );
 
-  compilerHost.getDefaultLibLocation = () => "/node_modules/typescript/lib/";
-
-  compilerHost.fileExists = file => fs.existsSync(file);
-
-  compilerHost.resolveModuleNames = (names, containingFile) => {
-    return names.map(name => ({
-      resolvedFileName: resolveFileName(name, containingFile)
-    }));
-  };
-
-  compilerHost.getSourceFile = (filename, version) => {
-    return Ts.createSourceFile(
-      filename,
-      String(fs.readFileSync(Path.join("/", `${filename}`))),
-      version
+  (options.mocks || []).forEach(mock => {
+    const base = `/node_modules/${mock.name}`;
+    project.createSourceFile(`${base}/index.ts`, mock.content);
+    project.fileSystem.writeFileSync(
+      `${base}/package.json`,
+      JSON.stringify({ name: mock.name, main: "./src/index.ts" })
     );
-  };
+  });
 
-  compilerHost.writeFile = (filename, data) => {
-    mkdirp({ fs, path: Path.dirname(filename) });
-    fs.writeFileSync(filename, data);
-  };
-
-  const program = Ts.createProgram([file.path], config, compilerHost);
+  const program = project.createProgram();
 
   const { emitSkipped, diagnostics } = program.emit(
     program.getSourceFile(file.path),
@@ -172,9 +115,7 @@ export const transformFile = (
   );
 
   if (emitSkipped) {
-    throw new Error(
-      diagnostics.map(diagnostic => diagnostic.messageText).join("\n")
-    );
+    throw new Error(project.formatDiagnosticsWithColorAndContext(diagnostics));
   }
 
   const inFile = program.getSourceFile(file.path);
@@ -193,7 +134,7 @@ export const transformFile = (
     throw new Error(`Could not determine fileArtifactPath for ${file.path}`);
   }
 
-  return String(fs.readFileSync(fileArtifactPath));
+  return String(project.fileSystem.readFileSync(fileArtifactPath));
 };
 
 function getFileArtifactPath(
