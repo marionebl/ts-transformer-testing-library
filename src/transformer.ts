@@ -28,43 +28,59 @@ export class Transformer {
   }
 
   public addMock(moduleDescriptor: ModuleDescriptor): Transformer {
-    this.mocks.push(moduleDescriptor);
-    return this.clone();
+    const clone = this.clone();
+    clone.mocks.push(moduleDescriptor);
+    return clone;
   }
 
   public addSource(source: File): Transformer {
-    this.sources.push(source);
-    return this;
+    const clone = this.clone();
+
+    clone.sources.push(source);
+    return clone;
   }
 
   public addTransformer(transformer: TransformerFn): Transformer {
-    this.transformers.push(transformer);
-    return this;
+    const clone = this.clone();
+
+    clone.transformers.push(transformer);
+    return clone;
   }
 
   public addTransformers(transformers: TransformerFn[]): Transformer {
-    this.transformers.push(...transformers);
-    return this;
+    const clone = this.clone();
+
+    clone.transformers.push(...transformers);
+    return clone;
   }
 
   public setCompilerOptions(options: Ts.CompilerOptions): Transformer {
-    this.compilerOptions = options;
+    const clone = this.clone();
 
-    if (this.project) {
-      this.project.compilerOptions.set(options);
+    clone.compilerOptions = options;
+
+    if (clone.project) {
+      clone.project = new Project({
+        useInMemoryFileSystem: true,
+        compilerOptions: getCompilerOptions(clone.compilerOptions)
+      });
     }
 
-    return this;
+    return clone;
   }
 
   public setFile(file: File): Transformer {
-    this.file = file;
-    return this;
+    const clone = this.clone();
+
+    clone.file = file;
+    return clone;
   }
 
   public setFilePath(filePath: string): Transformer {
-    this.filePath = filePath;
-    return this;
+    const clone = this.clone();
+
+    clone.filePath = filePath;
+    return clone;
   }
 
   public transform(input?: string): string {
