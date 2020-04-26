@@ -19,6 +19,6 @@
     "typescript": "^3.7.3"
   },
   "dependencies": {
-    "@ts-morph/bootstrap": "^0.3.0"
+    "@ts-morph/bootstrap": "^0.4.0"
   }
 }
